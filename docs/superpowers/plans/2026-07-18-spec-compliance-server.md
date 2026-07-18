@@ -26,9 +26,11 @@ thin wrapper and mostly inherits compliance from the SDK):
 
 This is effectively **Sendspin protocol v2 in practice** (the spec keeps
 `version: 1` but the handshake is incompatible with our current one). The
-proposal: implement it as a parallel handshake path with auto-detection, keep
-the legacy path during a migration window (Music Assistant interop), and land
-the work in the phases below.
+plan is a **hard cutover**: the new transport replaces the plaintext
+handshake outright — no dual-support window. When the spec-v2
+`sendspin-go-server` release ships, encryption is required; deployments that
+need the old protocol stay on the v1.8.x / v0.1.x releases until both sides
+upgrade (Music Assistant via an aiosendspin-7+ based provider).
 
 ## What is already compliant (verified against source)
 
@@ -79,7 +81,7 @@ the work in the phases below.
 | 2.7 | Requested/started formats MUST be from the client's `supported_formats` list (strict) | Mostly true; enforce |
 | 2.8 | Controller: `seek`/`seek_relative` (+`position_ms`/`offset_ms`, `seek_max_ms` in state, omit `seek` when unseekable), group-volume **delta redistribution algorithm** with clamp handling, group mute = all-muted, `switch` cycle w/ previous-group priority | Our `ControllerGroupRole` passes a bare command string; no params, no group-volume math |
 | 2.9 | `client/goodbye` reasons expanded (`another_server`, `user_request`, `unauthorized`, `pairing_required`, `concurrent_attempt`, `unpaired`); no-goodbye drop ⇒ assume `restart` + auto-reconnect (for playback/empty activity sets) + backoff rules | We only special-case `restart` for re-dial |
-| 2.10 | Forward compat: MUST ignore unknown fields (Go default ✅) but MUST NOT send undefined fields — our legacy MA-compat keys (`player_support`, `connection_reason`, unversioned support objects) must not appear on the new path | Keep them on the legacy path only |
+| 2.10 | Forward compat: MUST ignore unknown fields (Go default ✅) but MUST NOT send undefined fields — our legacy MA-compat keys (`player_support`, `connection_reason`, unversioned support objects) are removed outright (no legacy path survives the cutover) | Delete, don't fence |
 | 2.11 | `device_info.mac_address`, `trust_level`, `unpaired_access`, `supported_pair_methods` in `client/hello` — parse/store server-side | |
 
 ### Tier 3 — roles
@@ -106,8 +108,8 @@ questions).
   binary framing (JSON = type 0), fragmentation (types 2/3), re-handshake,
   handshake timeouts + close-without-error policy. Library: `flynn/noise`
   (supports X25519/ChaChaPoly/AESGCM/SHA-256 and psk modifiers) +
-  `x/crypto`. **Dual-stack**: first inbound frame `client/init` ⇒ new path;
-  `client/hello` ⇒ legacy path (config flag to disable legacy).
+  `x/crypto`. The new handshake **replaces** the legacy one — a first frame
+  that isn't `client/init` closes the connection. No compatibility shim.
 - **Phase S2 — session model (pkg/sendspin).** `server/activate` with
   `activities`/`active_roles`, slimmed `server/hello`, message-ordering
   enforcement, expanded goodbye reasons + reconnect/backoff policy,
@@ -133,9 +135,12 @@ questions).
   `f_peak`, `peak`; omit `beat` initially), then `color@v1` from artwork
   palette extraction. Until each lands, decline activation of that role
   (Tier 3.4).
-- **Phase S7 — migration & retirement.** Conformance green on the new
-  harness; coordinate with `aiosendspin`/Music Assistant on their new-path
-  rollout; flip legacy path to off-by-default; eventually remove.
+- **Phase S7 — release cutover.** Conformance green on the new harness;
+  coordinate the release with the aiosendspin-7+ Music Assistant provider;
+  ship as a major SDK + server release that **requires** encryption.
+  Release notes state plainly: old clients need the new release's
+  counterpart; mixed old/new setups are not supported — pin v1.8.x/v0.1.x
+  on both sides until ready to move together.
 
 Client-side work (Receiver/Player in the SDK, `sendspin-go-cli`) mirrors S1,
 S2, S4 and the client half of pairing — tracked separately, but S1's
@@ -154,8 +159,9 @@ living in `pkg/protocol`.
   gate on the conformance suite and A/B against v1.8.x behavior with the
   existing hardware test setup (the 2×Pi + MA rig from #144 is ideal).
 - The **`state`→`available` rename** and handshake inversion are hard
-  breaks; the dual-stack path is what keeps existing MA deployments working
-  during migration.
+  breaks by design (no dual-support window). The protection for existing
+  deployments is purely release-versioning: v1.8.x/v0.1.x remain available
+  and untouched; the cutover release is opt-in by upgrading.
 - `server_id` becomes the pubkey: persisted key material now determines
   server identity — document backup/restore in the server README
   (spec: Identities/Key rotation).
@@ -182,6 +188,6 @@ living in `pkg/protocol`.
 1. Where does the server persist identity + pairing records?
    Proposal: `~/.config/sendspin/server-identity` + `server-pairings.yaml`
    (0600), configurable via the existing config-file machinery.
-2. How long must the dual-stack (legacy `client/hello`-first) window stay
-   open for Music Assistant deployments after MA ships an aiosendspin-7+
-   based provider?
+2. ~~Dual-support window~~ — resolved: none. The spec-v2 release requires
+   encryption; coordination with MA happens at release time, not via a
+   compatibility shim.
