@@ -1,4 +1,4 @@
-# Plan: Phase 3 execution — extract sendspin-player-go and sendspin-server-go repos
+# Plan: Phase 3 execution — extract sendspin-go-cli and sendspin-go-server repos
 
 **Status:** Proposed
 **Owner:** Chris
@@ -33,8 +33,8 @@ work is in repo scaffolding, CI/release pipelines, and migration comms.
 | Repo | Module path | Contents | Native deps |
 |------|-------------|----------|-------------|
 | **Library (SDK)** | `github.com/Sendspin/sendspin-go` (unchanged) | `pkg/{sendspin,protocol,audio,sync,discovery}`, `examples/`, conformance wiring | libopus (encode/decode) |
-| **Server** | `github.com/Sendspin/sendspin-server-go` | root `main.go` (from `cmd/sendspin-server`), `internal/server` (file/MP3/FLAC/HLS sources + server TUI), `internal/version` copy, server dist/ assets | libopus (via SDK); ffmpeg optional at runtime for HLS |
-| **CLI client (player)** | `github.com/Sendspin/sendspin-player-go` | root `main.go`, `internal/ui`, `internal/version` copy, player dist/ assets | libopus + ALSA/CoreAudio (malgo) |
+| **Server** | `github.com/Sendspin/sendspin-go-server` | root `main.go` (from `cmd/sendspin-server`), `internal/server` (file/MP3/FLAC/HLS sources + server TUI), `internal/version` copy, server dist/ assets | libopus (via SDK); ffmpeg optional at runtime for HLS |
+| **CLI client (player)** | `github.com/Sendspin/sendspin-go-cli` | root `main.go`, `internal/ui`, `internal/version` copy, player dist/ assets | libopus + ALSA/CoreAudio (malgo) |
 
 Dependency direction stays acyclic: both CLIs `require` a tagged SDK; the SDK
 requires neither.
@@ -44,7 +44,7 @@ requires neither.
 1. **D1 — audio source decoders stay private to the server repo.**
    `internal/server`'s `MP3Source`/`FLACSource`/`HTTPMP3Source`/`FFmpegSource`
    are used only by the server CLI. Keep them `internal/` in
-   `sendspin-server-go`. Promoting them to `pkg/audio/source` in the SDK remains
+   `sendspin-go-server`. Promoting them to `pkg/audio/source` in the SDK remains
    an additive, non-breaking follow-up if library consumers ever ask for
    built-in sources. (Matches the "optional, deferred" note from Phase 2.)
 2. **D2 — `internal/version` is duplicated, not shared.** It is ~10 lines of
@@ -57,10 +57,10 @@ requires neither.
    fallback if filter-repo proves troublesome — acceptable, since the monorepo
    history remains browsable in sendspin-go.
 4. **D4 — root `main.go` in both CLI repos** so
-   `go install github.com/Sendspin/sendspin-{player,server}-go@latest` works
+   `go install github.com/Sendspin/sendspin-go-{cli,server}@latest` works
    with no `/cmd/...` suffix. Naming caveat: `go install` names the binary
-   after the module's last path element, so it produces `sendspin-player-go` /
-   `sendspin-server-go`. Makefiles and release tarballs keep shipping the
+   after the module's last path element, so it produces `sendspin-go-cli` /
+   `sendspin-go-server`. Makefiles and release tarballs keep shipping the
    binaries as `sendspin-player` / `sendspin-server` (systemd units and docs
    depend on those names); the `go install` spelling is documented as-is.
 5. **D5 — clean cut, no transition release.** After the split lands, the SDK
@@ -107,7 +107,7 @@ the Internal layout section (`internal/server`, `internal/ui`,
 
 **scripts/quickstart-pi.sh:** hardcodes `REPO_NAME="sendspin-go"` for both
 the release-tarball download and `RAW_URL_BASE`. Moves to the player repo in
-3c; repoint both constants to `sendspin-player-go` in 3e once its first release
+3c; repoint both constants to `sendspin-go-cli` in 3e once its first release
 exists (the download 404s until then — do not repoint earlier).
 
 **examples/README.md:** library-focused already; minor 3d touch-up where it
@@ -127,14 +127,14 @@ player repo. Nothing stays.
 **install-deps.sh:** stays in the SDK (tests need libopus); CLI repos get
 trimmed copies in 3b/3c.
 
-## Phase 3b — Create `sendspin-server-go`
+## Phase 3b — Create `sendspin-go-server` ✅ (2026-07-18)
 
-- [ ] New repo from filtered history (D3): keep `cmd/sendspin-server/`,
+- [x] New repo from filtered history (D3): keep `cmd/sendspin-server/`,
       `internal/server/`, `internal/version/`, `dist/config/` (server file),
       `dist/systemd/` (server unit).
 - [ ] Move `cmd/sendspin-server/main.go` → root `main.go` (D4); repoint
-      imports to `github.com/Sendspin/sendspin-server-go/internal/...`.
-- [ ] `go.mod`: `module github.com/Sendspin/sendspin-server-go`, `go 1.24`,
+      imports to `github.com/Sendspin/sendspin-go-server/internal/...`.
+- [ ] `go.mod`: `module github.com/Sendspin/sendspin-go-server`, `go 1.24`,
       `require github.com/Sendspin/sendspin-go v1.8.x`. `replace` allowed only
       locally; CI release job greps `go.mod` and fails if a `replace` survives.
 - [ ] Makefile: `server`, `test`, `lint`, `install-server-daemon` targets;
@@ -150,7 +150,7 @@ trimmed copies in 3b/3c.
       replace); binary runs and serves a test tone to a player built from the
       monorepo tag.
 
-## Phase 3c — Create `sendspin-player-go`
+## Phase 3c — Create `sendspin-go-cli` ✅ (2026-07-18)
 
 Same recipe as 3b with: root `main.go` (already at root), `internal/ui/`,
 `internal/version/`, player dist assets. Extra native deps in CI:
@@ -231,7 +231,22 @@ rows including armv6 (Pi Zero) — this binary is the reason those rows exist.
 |---|------|--------|------------|
 | 1 | sendspin-go | 3a: CI boundary guard + doc sweep | — |
 | 2 | sendspin-go | tag `v1.8.x` (last monorepo release) | 1 |
-| 3 | sendspin-server-go | 3b scaffold (initial import) | 2 |
-| 4 | sendspin-player-go | 3c scaffold (initial import) | 2 |
+| 3 | sendspin-go-server | 3b scaffold (initial import) | 2 |
+| 4 | sendspin-go-cli | 3c scaffold (initial import) | 2 |
 | 5 | sendspin-go | 3d slim-down + README/CLAUDE.md rewrite, tag `v1.9.0` | 3, 4 green |
 | 6 | all three | 3e re-pin, tags, announcements | 5 |
+
+## Progress log
+
+- 2026-07-18: Phase 3a complete — CI boundary guard merged (PR #145), doc
+  sweep recorded, last monorepo tag `v1.8.2` published.
+- 2026-07-18: Repos created with final names `sendspin-go-server` and
+  `sendspin-go-cli` (renamed from the planned `sendspin-server-go` /
+  `sendspin-player-go`; lowercase chosen for Go module-path convention).
+- 2026-07-18: Phases 3b + 3c complete — both repos populated via
+  git filter-repo (path history preserved), root `main.go`, go.mod pinning
+  SDK `v1.8.2` with no-replace CI guards, server/player-only Makefiles +
+  CI + release workflows, README/CLAUDE.md, Apache-2.0 license matching
+  the SDK. `quickstart-pi.sh` still points at sendspin-go releases until
+  sendspin-go-cli publishes its first release (3e). Next: Phase 3d (slim
+  the SDK) once both repos' CI is green.
