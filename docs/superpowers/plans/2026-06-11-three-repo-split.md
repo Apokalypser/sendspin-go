@@ -9,8 +9,8 @@
 Break the single `github.com/Sendspin/sendspin-go` module into three repos:
 
 1. **SDK** — `github.com/Sendspin/sendspin-go` (keep the path) — the importable library: shared protocol/audio/sync/discovery core **plus** the high-level client (`Receiver`/`Player`) **and** server (`Server`/`Group`/roles) APIs, plus `examples/`.
-2. **Player CLI** — `github.com/Sendspin/sendspin-player` — thin binary: root `main.go` + `internal/ui` (player TUI) + `internal/version`.
-3. **Server CLI** — `github.com/Sendspin/sendspin-server` — thin binary: `cmd/sendspin-server` + the server TUI.
+2. **Player CLI** — `github.com/Sendspin/sendspin-player-go` — thin binary: root `main.go` + `internal/ui` (player TUI) + `internal/version`.
+3. **Server CLI** — `github.com/Sendspin/sendspin-server-go` — thin binary: `cmd/sendspin-server` + the server TUI.
 
 ## Decision: one SDK with both client + server (not a client-only SDK)
 
@@ -35,9 +35,9 @@ One place sendspin-go goes finer than the ecosystem: **two** CLI repos (player +
 ## Target dependency direction (must stay acyclic)
 
 ```
-sendspin-player ─┐
+sendspin-player-go ─┐
                  ├─► sendspin-go (SDK)
-sendspin-server ─┘        pkg/sendspin ─► {pkg/protocol, pkg/audio*, pkg/sync, pkg/discovery}
+sendspin-server-go ─┘        pkg/sendspin ─► {pkg/protocol, pkg/audio*, pkg/sync, pkg/discovery}
                           (protocol/audio/sync/discovery have no internal-module deps)
 ```
 
@@ -108,8 +108,8 @@ Each phase is independently shippable and keeps `make test` + `make conformance`
 - Gate (critical checkpoint): SDK has **zero cross-boundary `internal/` imports**; `make test` + `make conformance` green.
 
 ### Phase 3 — Extract the two CLI modules
-- [ ] Create `sendspin-server` repo: `cmd/sendspin-server` + server TUI; `go.mod` requiring tagged SDK (`replace` only for local dev, CI-guarded).
-- [ ] Create `sendspin-player` repo: root `main.go` + `internal/ui` + `internal/version`.
+- [ ] Create `sendspin-server-go` repo: `cmd/sendspin-server` + server TUI; `go.mod` requiring tagged SDK (`replace` only for local dev, CI-guarded).
+- [ ] Create `sendspin-player-go` repo: root `main.go` + `internal/ui` + `internal/version`.
 - [ ] SDK repo: drop `main.go` + `cmd/`; keep module path. Split the release pipeline; conformance stays on the SDK.
 
 ## Cross-cutting concerns
@@ -133,3 +133,4 @@ Each phase is independently shippable and keeps `make test` + `make conformance`
 - 2026-06-11: Phase 1 complete — decomposed `pkg/sendspin` by file (in place, same package, no public API change): hoisted shared constants to `constants.go`, split `config.go` into common/player/server, split `source.go` and removed the `NewFileSource` stub, moved `containsRole` to `receiver.go`. Sets up the eventual client/server package split as a mechanical move.
 - 2026-06-11: Phase 2 (1/3) — promoted `internal/discovery` → `pkg/discovery` (verbatim move, repointed importers). Encoders and source decoders are the remaining two promotions; they need interface/constant reconciliation (`internal/server` has its own `AudioSource`) so they land as separate PRs.
 - 2026-06-11: Phase 2 GATE MET — promoted Opus/FLAC encoders → `pkg/audio/encode`. This turned out to be the *only* `internal/server` symbol the SDK used, so `pkg/` now has **zero** `internal/` imports (verified via `go list -deps`). The third promotion (source decoders → `pkg/audio/source`) is downgraded to optional: only `cmd/sendspin-server` uses the sources, so `internal/server` can stay private to the server-CLI repo. Phase 3 (extract CLI modules) is now unblocked.
+- 2026-07-18: Renamed the target CLI repos to `sendspin-player-go` / `sendspin-server-go` (suffix matches the SDK's naming and distinguishes them from other implementations' CLIs). Details in `2026-07-18-repo-split-execution.md`.
