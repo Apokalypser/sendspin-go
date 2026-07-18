@@ -75,7 +75,8 @@ requires neither.
 - [x] Sweep docs/README for statements that will become false after the split
       (install instructions, "two binaries" language) and stage rewrites.
       *(inventory below)*
-- [ ] Cut the last monorepo release tag (`v1.3.x`): the final version where
+- [ ] Cut the last monorepo release tag (`v1.8.x`; latest today is `v1.8.1`):
+      the final version where
       binaries and library ship together, and the minimum SDK version the CLI
       repos will pin.
 - Gate: `make test` + `make conformance` green; tag published.
@@ -134,7 +135,7 @@ trimmed copies in 3b/3c.
 - [ ] Move `cmd/sendspin-server/main.go` → root `main.go` (D4); repoint
       imports to `github.com/Sendspin/sendspin-server-go/internal/...`.
 - [ ] `go.mod`: `module github.com/Sendspin/sendspin-server-go`, `go 1.24`,
-      `require github.com/Sendspin/sendspin-go v1.3.x`. `replace` allowed only
+      `require github.com/Sendspin/sendspin-go v1.8.x`. `replace` allowed only
       locally; CI release job greps `go.mod` and fails if a `replace` survives.
 - [ ] Makefile: `server`, `test`, `lint`, `install-server-daemon` targets;
       keep `BUILDTAGS ?= nolibopusfile` and the ldflags version stamp
@@ -172,14 +173,14 @@ rows including armv6 (Pi Zero) — this binary is the reason those rows exist.
 - [ ] Rewrite README as a library README (install, Receiver/Player/Server
       quick-starts, links to the two CLI repos for ready-made binaries) and
       update CLAUDE.md (project overview, commands, layout sections).
-- [ ] Tag `v1.4.0` — first library-only release.
+- [ ] Tag `v1.9.0` — first library-only release.
 - Gate: `make test` + `make conformance` green; `go list ./...` contains only
-      `pkg/...` and `examples/...`; both CLI repos build against `v1.4.0`.
+      `pkg/...` and `examples/...`; both CLI repos build against `v1.9.0`.
 
 ## Phase 3e — Release, repoint, announce
 
-- [ ] Re-pin both CLI repos from `v1.3.x` to SDK `v1.4.0`; tag each CLI
-      `v1.4.0` (version streams start aligned, then drift independently —
+- [ ] Re-pin both CLI repos from `v1.8.x` to SDK `v1.9.0`; tag each CLI
+      `v1.9.0` (version streams start aligned, then drift independently —
       SDK leads, CLIs pin a minimum).
 - [ ] Conformance harness (`Sendspin/conformance`): adapter import paths are
       untouched (SDK kept its module path); update any CI checkout refs that
@@ -229,8 +230,8 @@ rows including armv6 (Pi Zero) — this binary is the reason those rows exist.
 | # | Repo | Change | Depends on |
 |---|------|--------|------------|
 | 1 | sendspin-go | 3a: CI boundary guard + doc sweep | — |
-| 2 | sendspin-go | tag `v1.3.x` (last monorepo release) | 1 |
+| 2 | sendspin-go | tag `v1.8.x` (last monorepo release) | 1 |
 | 3 | sendspin-server-go | 3b scaffold (initial import) | 2 |
 | 4 | sendspin-player-go | 3c scaffold (initial import) | 2 |
-| 5 | sendspin-go | 3d slim-down + README/CLAUDE.md rewrite, tag `v1.4.0` | 3, 4 green |
+| 5 | sendspin-go | 3d slim-down + README/CLAUDE.md rewrite, tag `v1.9.0` | 3, 4 green |
 | 6 | all three | 3e re-pin, tags, announcements | 5 |
