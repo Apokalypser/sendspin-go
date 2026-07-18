@@ -65,15 +65,62 @@ requires neither.
 
 ## Phase 3a — Pre-extraction hardening (in this repo, full test suite still applies)
 
-- [ ] Add a CI step that fails if `go list -deps ./pkg/...` ever matches
+- [x] Add a CI step that fails if `go list -deps ./pkg/...` ever matches
       `sendspin-go/internal` — makes the Phase 2 gate permanent instead of a
-      one-time check.
-- [ ] Sweep docs/README for statements that will become false after the split
+      one-time check. *(ci.yml test job, "SDK boundary guard" step)*
+- [x] Sweep docs/README for statements that will become false after the split
       (install instructions, "two binaries" language) and stage rewrites.
+      *(inventory below)*
 - [ ] Cut the last monorepo release tag (`v1.3.x`): the final version where
       binaries and library ship together, and the minimum SDK version the CLI
       repos will pin.
 - Gate: `make test` + `make conformance` green; tag published.
+
+### 3a sweep results — where every doc/asset lands
+
+Nothing below changes in 3a (it is all still true while the binaries live
+here); this is the staged disposition for 3b–3e.
+
+**README.md (640 lines — splits three ways in 3d):**
+
+| Lines (approx) | Content | Lands in |
+|-------|---------|----------|
+| 13 | Windows player memory note | player repo |
+| 141–153 | Pi quickstart (`quickstart-pi.sh`, player tarball) | player repo |
+| 160–208 | Native deps, MSYS2/Windows toolchain, `BUILDTAGS` notes | SDK keeps (tests still cgo); CLI repos copy the parts their builds need |
+| 200–306 | `make server`, server usage: `--audio` sources (MP3/FLAC/HLS), `--no-tui`, flags, daemon install, `server.yaml` | server repo |
+| 307–430 | Player usage: flags, `--list-audio-devices`, multi-instance, `player.yaml` | player repo |
+| 469–470 | Architecture bullets naming `cmd/sendspin-server` + root `main.go` | rewritten in SDK (drop cmd/ mentions) |
+| 500–540 | Combined walkthrough (run server + two players) | split across CLI READMEs; SDK keeps a library quick-start instead |
+| 549+ | Conformance suite section | SDK keeps |
+
+**CLAUDE.md (3d rewrite):** project overview ("ships as a library plus two
+CLI binaries"), the `make player`/`make server`/daemon targets in Commands,
+the Internal layout section (`internal/server`, `internal/ui`,
+`internal/version` all leave), and the Configuration & Daemon Mode section
+(daemon halves move to the CLI repos; the `config.go` API description stays).
+
+**scripts/quickstart-pi.sh:** hardcodes `REPO_NAME="sendspin-go"` for both
+the release-tarball download and `RAW_URL_BASE`. Moves to the player repo in
+3c; repoint both constants to `sendspin-player` in 3e once its first release
+exists (the download 404s until then — do not repoint earlier).
+
+**examples/README.md:** library-focused already; minor 3d touch-up where it
+tells the reader to run `./sendspin-server` for a counterpart (point at the
+server repo's releases instead).
+
+**Makefile:** `player`, `server`, `build-all`, `install-*-daemon` targets
+leave in 3d; `test`/`lint`/`conformance`/`BUILDTAGS` stay.
+
+**.github/workflows:** `ci.yml` build matrix + `release.yml` move to the CLI
+repos (3b/3c); SDK keeps test/lint/conformance (and the boundary guard).
+
+**dist/:** `config/server.example.yaml` + `systemd/sendspin-server.*` →
+server repo; `config/player.example.yaml` + `systemd/sendspin-player.*` →
+player repo. Nothing stays.
+
+**install-deps.sh:** stays in the SDK (tests need libopus); CLI repos get
+trimmed copies in 3b/3c.
 
 ## Phase 3b — Create `sendspin-server`
 

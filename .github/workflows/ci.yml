@@ -30,6 +30,18 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libopus-dev libasound2-dev
 
+    # Phase 2 gate of the three-repo split, kept permanent: the SDK (pkg/)
+    # must never depend on internal/, which stays behind with the CLI repos.
+    # See docs/superpowers/plans/2026-07-18-repo-split-execution.md.
+    - name: SDK boundary guard (pkg/ must not import internal/)
+      run: |
+        deps=$(go list -deps ./pkg/... | grep 'sendspin-go/internal' || true)
+        if [ -n "$deps" ]; then
+          echo "::error::pkg/ imports internal/ packages — SDK boundary violated:"
+          echo "$deps"
+          exit 1
+        fi
+
     - name: Run tests
       run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
