@@ -160,17 +160,28 @@ living in `pkg/protocol`.
   server identity — document backup/restore in the server README
   (spec: Identities/Key rotation).
 
-## Open questions
+## Constraints & answers (from Chris, 2026-07-18)
 
-1. Is `Sendspin/conformance` being updated to the new spec, and on what
-   timeline? S1–S4 should not merge ahead of a harness that can verify them.
-2. `aiosendspin` status: is the new handshake already implemented there
-   (useful as an interop test peer for Noise/CPace before MA ships it)?
-3. Role policy for the first release: activate `source`/`visualizer`/`color`
-   only when implemented (proposed), or hold the whole release until all
-   roles land?
-4. Where does the server persist identity + pairing records?
+1. **Conformance is not yet updated to the new spec** → this work stays
+   **unreleased** until it is. Consequence: develop on a long-lived
+   `feat/spec-v2` branch in the SDK (rebased regularly on `main`); no SDK
+   tag containing the new path ships before the harness can gate it. The
+   legacy path stays the only released behavior in the meantime.
+2. **Interop peers for the encrypted path exist**: `aiosendspin` 7+
+   implements the encryption (Noise/pairing) but **not** the `source`
+   role; the (unreleased) **sendspindotnet** SDK also has encryption
+   support. Plan impact: S1–S3 can be validated against aiosendspin 7+
+   (and cross-checked against sendspindotnet) before conformance lands —
+   real interop replaces the harness as the interim gate.
+3. **`source@v1` has no reference peer anywhere yet** → it stays last in
+   S6 and its activation stays declined until there is something to test
+   against; this also derisks the engine-input work.
+
+## Remaining open questions
+
+1. Where does the server persist identity + pairing records?
    Proposal: `~/.config/sendspin/server-identity` + `server-pairings.yaml`
    (0600), configurable via the existing config-file machinery.
-5. Does Music Assistant's provider negotiate the legacy path today, and how
-   long must the dual-stack window stay open?
+2. How long must the dual-stack (legacy `client/hello`-first) window stay
+   open for Music Assistant deployments after MA ships an aiosendspin-7+
+   based provider?
