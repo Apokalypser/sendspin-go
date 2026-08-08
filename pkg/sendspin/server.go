@@ -63,6 +63,14 @@ type Server struct {
 
 	clockStart time.Time // monotonic microseconds origin
 
+	// LOCAL PATCH: next chunk playback timestamp, advanced by exactly one chunk
+	// per tick instead of re-sampled from the clock. See generateAndSendChunk.
+	nextPlaybackTimeUs int64
+
+	// LOCAL PATCH: running total of encoded audio actually handed to the
+	// sockets. Read via AudioBytesSent.
+	audioBytesSent atomic.Int64
+
 	audioSource         AudioSource
 	consecutiveReadErrs int
 
@@ -316,6 +324,52 @@ func (s *Server) Clients() []ClientInfo {
 	}
 
 	return clients
+}
+
+// AudioBytesSent returns the total encoded audio written to client sockets
+// since the server started, summed over all clients. Counts the whole binary
+// frame -- payload plus the 9-byte Sendspin header -- and nothing else: control
+// messages, time sync and metadata are not included.
+//
+// LOCAL PATCH: upstream keeps no such counter. Poll it and difference the value
+// to get a rate.
+func (s *Server) AudioBytesSent() int64 {
+	return s.audioBytesSent.Load()
+}
+
+// SetPlayerVolume tells every connected player to set its volume, 0-100.
+//
+// LOCAL PATCH: upstream can receive a client's volume through client/state but
+// offers no way to push one out, even though the wire format for it exists
+// (ServerCommandMessage with PlayerCommand{Command: "volume"}) and the C++
+// client already acts on it. Used to forward the Spotify app's volume slider to
+// the amplifier.
+//
+// Best-effort, like every other send: a full client buffer is logged and
+// skipped rather than retried, because a stale volume is worth less than the
+// audio queued behind it.
+func (s *Server) SetPlayerVolume(volume int) {
+	if volume < 0 {
+		volume = 0
+	} else if volume > 100 {
+		volume = 100
+	}
+
+	msg := protocol.ServerCommandMessage{
+		Player: &protocol.PlayerCommand{Command: "volume", Volume: volume},
+	}
+
+	s.clientsMu.RLock()
+	defer s.clientsMu.RUnlock()
+
+	for _, c := range s.clients {
+		if !c.HasRole("player") {
+			continue
+		}
+		if err := c.Send("server/command", msg); err != nil {
+			log.Printf("Error sending volume to %s: %v", c.name, err)
+		}
+	}
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {

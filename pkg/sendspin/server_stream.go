@@ -38,8 +38,39 @@ func (s *Server) generateAndSendChunk() {
 	// Weakening either invariant re-introduces the drift class described in
 	// aiosendspin#217 (500ms cliff after ~17 minutes at 44.1k/25ms). See also
 	// issue #91 for converting the linear resampler to integer-rational math.
+	// LOCAL PATCH -- see sender/README.md
+	//
+	// Upstream samples the clock fresh on every tick. That avoids the drift class
+	// the invariant note above describes, but it also copies the ticker's delivery
+	// jitter straight into the timestamp: the audio content always advances by
+	// exactly one chunk, while the timestamp advances by however late the tick was.
+	//
+	// Measured on a normally loaded macOS host: mean interval exactly 20.00 ms, so
+	// no drift, but a standard deviation around 500-1400 us and single excursions
+	// to 30-41 ms. A receiver whose own playback clock is stable to +-30 us sees
+	// each excursion as a step in the server timeline and, above its hard-sync
+	// threshold of 5 ms, corrects with an audible jump.
+	//
+	// So advance a counter by exactly one chunk instead, and re-anchor it to the
+	// sampled clock only when the two have drifted apart by more than
+	// playbackReanchorUs. Jitter well below that bound is filtered out completely;
+	// real drift is still bounded, which is what the invariant is actually about.
+	// currentTime stays the real clock: the send-buffer tracker below prunes
+	// against actual elapsed time, which must not be scheduled.
 	currentTime := s.getClockMicros()
-	playbackTime := currentTime + (BufferAheadMs * 1000)
+	sampled := currentTime + (BufferAheadMs * 1000)
+	chunkUs := int64(ChunkDurationMs) * 1000
+
+	if s.nextPlaybackTimeUs == 0 {
+		s.nextPlaybackTimeUs = sampled
+	} else if delta := sampled - s.nextPlaybackTimeUs; delta > playbackReanchorUs ||
+		delta < -playbackReanchorUs {
+		log.Printf("playback schedule re-anchored, was %.1f ms off", float64(delta)/1000.0)
+		s.nextPlaybackTimeUs = sampled
+	}
+
+	playbackTime := s.nextPlaybackTimeUs
+	s.nextPlaybackTimeUs += chunkUs
 
 	chunkSamples := (s.audioSource.SampleRate() * ChunkDurationMs) / 1000
 	totalSamples := chunkSamples * s.audioSource.Channels()
@@ -134,6 +165,10 @@ func (s *Server) generateAndSendChunk() {
 			}
 			continue
 		}
+
+		// LOCAL PATCH: throughput accounting, see Server.AudioBytesSent. Counted
+		// here rather than in SendBinary so it stays audio only.
+		s.audioBytesSent.Add(int64(len(chunk)))
 
 		if tracker != nil {
 			chunkDurationUs := int64(ChunkDurationMs) * 1000

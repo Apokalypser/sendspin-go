@@ -23,4 +23,10 @@ const (
 
 	// BufferAheadMs is how far ahead of playback the server sends audio.
 	BufferAheadMs = 500
+
+	// LOCAL PATCH: how far the running playback schedule may drift from the
+	// sampled clock before it is re-anchored. Far above the ticker jitter this is
+	// meant to filter (tens of milliseconds at worst), far below anything a
+	// listener would notice in a one-off correction.
+	playbackReanchorUs = 100_000
 )
