@@ -93,6 +93,9 @@ type ClientInfo struct {
 	Volume int
 	Muted  bool
 	Codec  string
+	// LOCAL PATCH: where the client connected from, so a caller can link to
+	// the device rather than only naming it.
+	Address string
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -314,12 +317,13 @@ func (s *Server) Clients() []ClientInfo {
 	clients := make([]ClientInfo, 0, len(s.clients))
 	for _, c := range s.clients {
 		clients = append(clients, ClientInfo{
-			ID:     c.ID(),
-			Name:   c.Name(),
-			State:  c.State(),
-			Volume: c.Volume(),
-			Muted:  c.Muted(),
-			Codec:  c.Codec(),
+			ID:      c.ID(),
+			Name:    c.Name(),
+			State:   c.State(),
+			Volume:  c.Volume(),
+			Muted:   c.Muted(),
+			Codec:   c.Codec(),
+			Address: c.RemoteAddr(),
 		})
 	}
 
@@ -349,22 +353,35 @@ func (s *Server) AudioBytesSent() int64 {
 // skipped rather than retried, because a stale volume is worth less than the
 // audio queued behind it.
 func (s *Server) SetPlayerVolume(volume int) {
-	if volume < 0 {
-		volume = 0
-	} else if volume > 100 {
-		volume = 100
-	}
+	s.SetPlayerVolumeFunc(func(ClientInfo) int { return volume })
+}
 
-	msg := protocol.ServerCommandMessage{
-		Player: &protocol.PlayerCommand{Command: "volume", Volume: volume},
-	}
-
+// SetPlayerVolumeFunc is SetPlayerVolume with a per-player value, so callers can
+// trim one speaker against another without sending several broadcasts and
+// hoping they do not race.
+//
+// LOCAL PATCH, same reason as SetPlayerVolume above.
+func (s *Server) SetPlayerVolumeFunc(volumeFor func(ClientInfo) int) {
 	s.clientsMu.RLock()
 	defer s.clientsMu.RUnlock()
 
 	for _, c := range s.clients {
 		if !c.HasRole("player") {
 			continue
+		}
+
+		volume := volumeFor(ClientInfo{
+			ID: c.ID(), Name: c.Name(), State: c.State(),
+			Volume: c.Volume(), Muted: c.Muted(), Codec: c.Codec(),
+		})
+		if volume < 0 {
+			volume = 0
+		} else if volume > 100 {
+			volume = 100
+		}
+
+		msg := protocol.ServerCommandMessage{
+			Player: &protocol.PlayerCommand{Command: "volume", Volume: volume},
 		}
 		if err := c.Send("server/command", msg); err != nil {
 			log.Printf("Error sending volume to %s: %v", c.name, err)

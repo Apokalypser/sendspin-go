@@ -5,6 +5,7 @@ package sendspin
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -109,6 +110,22 @@ func (c *ServerClient) SendBinary(data []byte) error {
 	default:
 		return fmt.Errorf("client send buffer full")
 	}
+}
+
+// RemoteAddr returns the host the client connected from, without the port.
+//
+// LOCAL PATCH: upstream keeps the connection private and reports only names and
+// ids, which are not enough to find a device on the network -- a player's own
+// status page lives at its address, and nothing else reveals it.
+func (c *ServerClient) RemoteAddr() string {
+	if c.conn == nil {
+		return ""
+	}
+	addr := c.conn.RemoteAddr().String()
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
 }
 
 // State returns the client's current playback state ("synchronized",
