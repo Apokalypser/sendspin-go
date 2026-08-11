@@ -356,6 +356,32 @@ func (s *Server) SetPlayerVolume(volume int) {
 	s.SetPlayerVolumeFunc(func(ClientInfo) int { return volume })
 }
 
+// volumeCommand builds a server/command payload that can express volume zero.
+//
+// LOCAL PATCH. protocol.PlayerCommand tags Volume with omitempty, and on an int
+// that drops the value nought entirely: {"command":"volume"} with no volume
+// field at all. The receiving client checks whether the field is present, finds
+// it missing, and does nothing -- so a player can be set to any volume except
+// silence, and every command that happens to compute to zero is a silent no-op.
+//
+// A local type rather than dropping the tag upstream, because the client checks
+// each field of the payload independently instead of switching on Command: a
+// PlayerCommand that always carried "volume":0 would mute-and-silence on every
+// mute command. This payload only ever carries the two fields it needs.
+type volumeCommandPayload struct {
+	Player struct {
+		Command string `json:"command"`
+		Volume  int    `json:"volume"`
+	} `json:"player"`
+}
+
+func volumeCommand(volume int) volumeCommandPayload {
+	var payload volumeCommandPayload
+	payload.Player.Command = "volume"
+	payload.Player.Volume = volume
+	return payload
+}
+
 // SetPlayerVolumeFunc is SetPlayerVolume with a per-player value, so callers can
 // trim one speaker against another without sending several broadcasts and
 // hoping they do not race.
@@ -380,10 +406,7 @@ func (s *Server) SetPlayerVolumeFunc(volumeFor func(ClientInfo) int) {
 			volume = 100
 		}
 
-		msg := protocol.ServerCommandMessage{
-			Player: &protocol.PlayerCommand{Command: "volume", Volume: volume},
-		}
-		if err := c.Send("server/command", msg); err != nil {
+		if err := c.Send("server/command", volumeCommand(volume)); err != nil {
 			log.Printf("Error sending volume to %s: %v", c.name, err)
 		}
 	}
